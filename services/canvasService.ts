@@ -30,41 +30,6 @@ const wrapText = (
   return lines;
 };
 
-const drawHeart = (ctx: CanvasRenderingContext2D, x: number, y: number, size: number, color: string) => {
-  ctx.save();
-  ctx.fillStyle = color;
-  ctx.beginPath();
-  const topCurveHeight = size * 0.3;
-  ctx.moveTo(x, y + topCurveHeight);
-  // top left curve
-  ctx.bezierCurveTo(
-    x, y, 
-    x - size / 2, y, 
-    x - size / 2, y + topCurveHeight
-  );
-  // bottom left curve
-  ctx.bezierCurveTo(
-    x - size / 2, y + (size + topCurveHeight) / 2, 
-    x, y + (size + topCurveHeight) / 2, 
-    x, y + size
-  );
-  // bottom right curve
-  ctx.bezierCurveTo(
-    x, y + (size + topCurveHeight) / 2, 
-    x + size / 2, y + (size + topCurveHeight) / 2, 
-    x + size / 2, y + topCurveHeight
-  );
-  // top right curve
-  ctx.bezierCurveTo(
-    x + size / 2, y, 
-    x, y, 
-    x, y + topCurveHeight
-  );
-  ctx.closePath();
-  ctx.fill();
-  ctx.restore();
-};
-
 /**
  * Generates the PNG confession image.
  */
@@ -77,60 +42,43 @@ export const generateConfessionImage = async (data: ConfessionData): Promise<str
   // 1. Setup Canvas Dimensions
   const WIDTH = 1080;
   const HEIGHT = 1350;
-  const PADDING = 120;
+  const PADDING = 120; // Ensure text stays within safe area of the template
   
   canvas.width = WIDTH;
   canvas.height = HEIGHT;
 
-  // 2. Draw Background
-  if (data.isDarkTheme) {
-    // "Sweetheart" Theme (Pink Background)
-    ctx.fillStyle = '#fce7f3'; // pink-100
-    ctx.fillRect(0, 0, WIDTH, HEIGHT);
-  } else {
-    // "Classic" Theme (White Background)
-    ctx.fillStyle = '#ffffff'; 
-    ctx.fillRect(0, 0, WIDTH, HEIGHT);
-  }
-  
-  // 3. Draw Decorative Hearts (Background Pattern)
-  const heartColor = data.isDarkTheme ? 'rgba(244, 63, 94, 0.1)' : 'rgba(255, 182, 193, 0.2)';
-  
-  for(let i=0; i<40; i++) {
-    const x = Math.random() * WIDTH;
-    const y = Math.random() * HEIGHT;
-    const size = 10 + Math.random() * 40;
-    const rotation = (Math.random() - 0.5) * 1; // Slight tilt
+  // 2. Load and Draw Template Image
+  const template = new Image();
+  template.crossOrigin = "anonymous";
+  template.src = '/my_love.svg';
+
+  try {
+    // Wait for both the SVG template AND the web fonts to be fully loaded
+    await Promise.all([
+      new Promise((resolve, reject) => {
+        if (template.complete) return resolve(true);
+        template.onload = () => resolve(true);
+        template.onerror = () => reject(new Error('Failed to load template image'));
+      }),
+      document.fonts.ready 
+    ]);
     
-    ctx.save();
-    ctx.translate(x, y);
-    ctx.rotate(rotation);
-    drawHeart(ctx, 0, 0, size, heartColor);
-    ctx.restore();
+    // Draw the template to cover the canvas
+    ctx.drawImage(template, 0, 0, WIDTH, HEIGHT);
+    
+  } catch (e) {
+    console.error("Template/Font loading failed, falling back to basic background", e);
+    // Fallback in case image is missing
+    ctx.fillStyle = '#fff1f2';
+    ctx.fillRect(0, 0, WIDTH, HEIGHT);
   }
 
-  // 4. Draw Border
-  const borderColor = data.isDarkTheme ? '#f43f5e' : '#fda4af'; // Rose-500 or Rose-300
-  ctx.strokeStyle = borderColor;
-  ctx.lineWidth = 4;
-  
-  // Double Border Effect
-  ctx.strokeRect(40, 40, WIDTH - 80, HEIGHT - 80);
-  ctx.lineWidth = 2;
-  ctx.strokeRect(55, 55, WIDTH - 110, HEIGHT - 110);
-  
-  // Corner Hearts
-  const cornerSize = 24;
-  drawHeart(ctx, 40, 40 - cornerSize/2, cornerSize, borderColor);
-  drawHeart(ctx, WIDTH - 40, 40 - cornerSize/2, cornerSize, borderColor);
-  drawHeart(ctx, 40, HEIGHT - 40 - cornerSize, cornerSize, borderColor);
-  drawHeart(ctx, WIDTH - 40, HEIGHT - 40 - cornerSize, cornerSize, borderColor);
-
-  // 5. Configure Fonts
+  // 3. Configure Fonts
+  // Adjust colors to ensure visibility on top of the template.
   const textColor = data.isDarkTheme ? '#881337' : '#be123c'; // Rose-900 or Rose-700
   const accentColor = '#e11d48'; // Rose-600
 
-  // 6. Draw Content
+  // 4. Draw Content
   const baseFontSize = 48;
   const lineHeight = baseFontSize * 1.6;
   
@@ -149,21 +97,24 @@ export const generateConfessionImage = async (data: ConfessionData): Promise<str
   
   const textBlockHeight = lines.length * lineHeight;
   let startY = (HEIGHT - textBlockHeight) / 2;
-
+  
+  // Safety check: ensure text doesn't start above the padding area
+  startY = Math.max(PADDING, startY);
+  
   lines.forEach((line) => {
     ctx.fillText(line, WIDTH / 2, startY);
     startY += lineHeight;
   });
 
-  // 7. Draw Sender ("From")
+  // 5. Draw Sender ("From")
   if (data.sender) {
     ctx.font = `italic 32px "Cinzel", serif`;
     ctx.fillStyle = accentColor;
     const footerY = HEIGHT - PADDING;
-    ctx.fillText(`xoxo, ${data.sender}`, WIDTH / 2, footerY); // Added "xoxo" for cuteness
+    ctx.fillText(`xoxo, ${data.sender}`, WIDTH / 2, footerY);
   }
 
-  // 8. Watermark
+  // 6. Watermark
   ctx.font = `400 20px "Inter", sans-serif`;
   ctx.fillStyle = data.isDarkTheme ? '#be123c' : '#fb7185';
   ctx.fillText('pec-confessions', WIDTH / 2, HEIGHT - 40);
